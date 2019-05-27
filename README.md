@@ -5,4 +5,4 @@ pip3 install ./websocket_client-0.44.0-py2.py3-none-any.whl
 
 ## 行情(可传参要查看的币种，默认HT)
 如下：
-python3 huobi_market.py HT
+python3 marketwindow.py btc eth eos ht
