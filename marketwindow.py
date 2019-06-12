@@ -8,6 +8,7 @@ import json
 import sys
 import _thread
 from tkinter import *
+from tkinter import messagebox
 from urllib.request import Request, urlopen
 
 #usdt coinid=2 tradeType: 1: buy 2: sale
@@ -27,7 +28,7 @@ def priceThread(threadname, coinID, tradeType):
     global usdt_price
     while(1):
         usdt_price = getPrice(coinID, tradeType)
-        time.sleep(30)
+        time.sleep(60)
 
 ws = None
 def connWebSocket():
@@ -39,6 +40,16 @@ def connWebSocket():
         except:
             print('connect ws error,retry...')
             time.sleep(5)
+
+argList = ['ht', 'eos', 'btc', 'eth']
+def subMarketKline():
+    global ws
+    global argList
+    for coinname in argList:
+        market1day = """{"sub": "market.""" + coinname.lower() + """usdt.kline.1day", "id": "id10"}"""
+        market1min = """{"sub": "market.""" + coinname.lower() + """usdt.kline.1min", "id": "id11"}"""
+        ws.send(market1day)
+        ws.send(market1min)
 
 def sockeThread(threadname, coinlist, textlist):
     while(1):
@@ -55,52 +66,60 @@ def sockeThread(threadname, coinlist, textlist):
                     close = jsonobj['tick']['close']
                     rate = (close - jsonobj['tick']['open'])/jsonobj['tick']['open'] * 100
                     chname = jsonobj['ch']
-                    for index in range(len(coinlist)):
-                        if coinlist[index] in chname:
-                            str_close = '0.00'
-                            if close >= 100:
-                                str_close = "{:.2f}".format(close)
-                            elif close >= 1:
-                                str_close = "{:.4f}".format(close)
-                            else:
-                                str_close = "{:.8f}".format(close).rstrip('0')
-                            cny_close = '0.00'
-                            if close*usdt_price >= 1:
-                                cny_close = "{:.2f}".format(close*usdt_price)
-                            else:
-                                cny_close = "{:.4f}".format(close*usdt_price)
-                            textlist[index]['text'] = "{}: {} | {:+.2f}% | ≈ {} CNY".format(coinlist[index].upper(), str_close, rate, cny_close)
-                            if rate >= 0:
-                                textlist[index]['fg'] = 'green'
-                            else:
-                                textlist[index]['fg'] = 'red'
-                            break
+                    if "kline.1day"  in chname:
+                        for index in range(len(coinlist)):
+                            if coinlist[index] in chname:
+                                str_close = '0.00'
+                                if close >= 100:
+                                    str_close = "{:.2f}".format(close)
+                                elif close >= 1:
+                                    str_close = "{:.4f}".format(close)
+                                else:
+                                    str_close = "{:.8f}".format(close).rstrip('0')
+                                cny_close = '0.00'
+                                if close*usdt_price >= 1:
+                                    cny_close = "{:.2f}".format(close*usdt_price)
+                                else:
+                                    cny_close = "{:.4f}".format(close*usdt_price)
+                                textlist[index]['text'] = "{}: {} | {:+.2f}% | ≈ {} CNY".format(coinlist[index].upper(), str_close, rate, cny_close)
+                                if rate >= 0:
+                                    textlist[index]['fg'] = 'green'
+                                else:
+                                    textlist[index]['fg'] = 'red'
+                                break
+                    elif "kline.1min"  in chname:
+                        for index in range(len(coinlist)):
+                            if coinlist[index] in chname:
+                                alert_message = "{} 1分钟涨跌幅：{:+.2f}%".format(coinlist[index].upper(), rate)
+                                if abs(rate) >= 5:
+                                    messagebox.showwarning(coinlist[index].upper(), alert_message)
+
         except:
             print('data error')
             connWebSocket()
+            subMarketKline()
 
 
 root = Tk()
-root.title("hello market")
+root.title("Market Price")
 root.configure(background='black')
-
-connWebSocket()
 
 # 订阅 KLine 数据
 coinList = []
 textList = []
-argList = ['ht', 'eos', 'btc', 'eth']
 
 if len(sys.argv) > 1:
     argList = sys.argv[1:]
 
+connWebSocket()
+
 for coinname in argList:
-    market = """{"sub": "market.""" + coinname.lower() + """usdt.kline.1day", "id": "id10"}"""
     coinList.append(coinname.lower())
-    ws.send(market)
-    coinLabel = Label(root, fg='green', bg='black', font=("微软雅黑", 24), text=coinname)
+    coinLabel = Label(root, fg='green', bg='black', font=("微软雅黑", 24), text=coinname.upper())
     textList.append(coinLabel)
     coinLabel.grid(sticky='W')
+
+subMarketKline()
 
 thread1 = _thread.start_new_thread(sockeThread, ("Thread-1", coinList, textList))
 thread2 = _thread.start_new_thread(priceThread, ("Thread-2", '2', '1'))
