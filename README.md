@@ -8,4 +8,4 @@ pip3 install ./websocket_client-0.44.0-py2.py3-none-any.whl
 python3 marketwindow.py btc eth eos ht
 
 ## 运行效果图
-![avatar](https://github.com/chenyan-github/python-market/blob/master/market_test.jpg)
+![avatar](https://github.com/chenyan-github/python-market/blob/master/test.jpeg)
