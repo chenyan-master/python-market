@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 #author: chenyan
 
-from websocket import create_connection
+import websocket
 import gzip
 import time
 import json
@@ -30,18 +30,8 @@ def priceThread(threadname, coinID, tradeType):
         usdt_price = getPrice(coinID, tradeType)
         time.sleep(60)
 
-ws = None
-def connWebSocket():
-    global ws
-    while(1):
-        try:
-            ws = create_connection("wss://api.huobi.pro/ws")
-            break
-        except:
-            print('connect ws error,retry...')
-            time.sleep(5)
-
 argList = ['ht', 'eos', 'btc', 'eth']
+ws = None
 def subMarketKline():
     global ws
     global argList
@@ -51,54 +41,77 @@ def subMarketKline():
         ws.send(market1day)
         ws.send(market1min)
 
-def sockeThread(threadname, coinlist, textlist):
+def on_error(ws, error):
+    print(error)
+
+def on_close(ws):
+    print("### closed ###")
+
+def on_open(ws):
+    subMarketKline()
+
+def handleMessage(message, coinlist, textlist):
+    global ws
+    try:
+        result=gzip.decompress(message).decode('utf-8')
+        if result[:7] == '{"ping"':
+            ts=result[8:21]
+            pong='{"pong":'+ts+'}'
+            ws.send(pong)
+        else:
+            jsonobj = json.loads(result)
+            if 'tick' in jsonobj.keys():
+                close = jsonobj['tick']['close']
+                rate = (close - jsonobj['tick']['open'])/jsonobj['tick']['open'] * 100
+                chname = jsonobj['ch']
+                if "kline.1day"  in chname:
+                    for index in range(len(coinlist)):
+                        if coinlist[index] in chname:
+                            str_close = '0.00'
+                            if close >= 100:
+                                str_close = "{:.2f}".format(close)
+                            elif close >= 1:
+                                str_close = "{:.4f}".format(close)
+                            else:
+                                str_close = "{:.8f}".format(close).rstrip('0')
+                            cny_close = '0.00'
+                            if close*usdt_price >= 1:
+                                cny_close = "{:.2f}".format(close*usdt_price)
+                            else:
+                                cny_close = "{:.4f}".format(close*usdt_price)
+                            textlist[index]['text'] = "{}: {} | {:+.2f}% | ≈ {} CNY".format(coinlist[index].upper(), str_close, rate, cny_close)
+                            if rate >= 0:
+                                textlist[index]['fg'] = 'green'
+                            else:
+                                textlist[index]['fg'] = 'red'
+                elif "kline.1min"  in chname:
+                    for index in range(len(coinlist)):
+                        if coinlist[index] in chname:
+                            alert_message = "{} 1分钟涨跌幅：{:+.2f}%".format(coinlist[index].upper(), rate)
+                            if abs(rate) >= 5:
+                                messagebox.showwarning(coinlist[index].upper(), alert_message)
+
+    except:
+        print('data error')
+        connWebSocket()
+
+def on_message(ws, message):
+    handleMessage(message, coinList, textList)
+
+def connWebSocket():
+    global ws
     while(1):
         try:
-            compressData=ws.recv()
-            result=gzip.decompress(compressData).decode('utf-8')
-            if result[:7] == '{"ping"':
-                ts=result[8:21]
-                pong='{"pong":'+ts+'}'
-                ws.send(pong)
-            else:
-                jsonobj = json.loads(result)
-                if 'tick' in jsonobj.keys():
-                    close = jsonobj['tick']['close']
-                    rate = (close - jsonobj['tick']['open'])/jsonobj['tick']['open'] * 100
-                    chname = jsonobj['ch']
-                    if "kline.1day"  in chname:
-                        for index in range(len(coinlist)):
-                            if coinlist[index] in chname:
-                                str_close = '0.00'
-                                if close >= 100:
-                                    str_close = "{:.2f}".format(close)
-                                elif close >= 1:
-                                    str_close = "{:.4f}".format(close)
-                                else:
-                                    str_close = "{:.8f}".format(close).rstrip('0')
-                                cny_close = '0.00'
-                                if close*usdt_price >= 1:
-                                    cny_close = "{:.2f}".format(close*usdt_price)
-                                else:
-                                    cny_close = "{:.4f}".format(close*usdt_price)
-                                textlist[index]['text'] = "{}: {} | {:+.2f}% | ≈ {} CNY".format(coinlist[index].upper(), str_close, rate, cny_close)
-                                if rate >= 0:
-                                    textlist[index]['fg'] = 'green'
-                                else:
-                                    textlist[index]['fg'] = 'red'
-                                break
-                    elif "kline.1min"  in chname:
-                        for index in range(len(coinlist)):
-                            if coinlist[index] in chname:
-                                alert_message = "{} 1分钟涨跌幅：{:+.2f}%".format(coinlist[index].upper(), rate)
-                                if abs(rate) >= 5:
-                                    messagebox.showwarning(coinlist[index].upper(), alert_message)
-
+            ws = websocket.WebSocketApp("wss://api.huobi.pro/ws",
+                                        on_open = on_open,
+                                        on_message = on_message,
+                                        on_error = on_error,
+                                        on_close = on_close)
+            ws.run_forever()
+            break
         except:
-            print('data error')
-            connWebSocket()
-            subMarketKline()
-
+            print('connect ws error,retry...')
+            time.sleep(5)
 
 root = Tk()
 root.title("Market Price")
@@ -111,17 +124,13 @@ textList = []
 if len(sys.argv) > 1:
     argList = sys.argv[1:]
 
-connWebSocket()
-
 for coinname in argList:
     coinList.append(coinname.lower())
     coinLabel = Label(root, fg='green', bg='black', font=("微软雅黑", 24), text=coinname.upper())
     textList.append(coinLabel)
     coinLabel.grid(sticky='W')
 
-subMarketKline()
-
-thread1 = _thread.start_new_thread(sockeThread, ("Thread-1", coinList, textList))
-thread2 = _thread.start_new_thread(priceThread, ("Thread-2", '2', '1'))
+_thread.start_new_thread(connWebSocket, ())
+_thread.start_new_thread(priceThread, ("Thread-2", '2', '1'))
 
 root.mainloop()
