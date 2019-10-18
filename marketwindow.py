@@ -12,23 +12,28 @@ from tkinter import messagebox
 from urllib.request import Request, urlopen
 
 #usdt coinid=2 tradeType: 1: buy 2: sale
-usdt_price = 6.79
+usdt_price = 7.07
 def getPrice(coinID, tradeType):
-    huobiapi = "https://otc-api.huobi.pro/v1/data/trade/list/public"
-    api_url = huobiapi + "?coinId=" + coinID + "&tradeType=" + tradeType + "&currPage=1&payMethod=0&country=&merchant=1&online=1&currency=1"
+    global usdt_price
+    huobiapi = "https://l10n-api.huobi.cn"
+    api_url = huobiapi + "/general/exchange_rate/list"
     firefox_headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:23.0) Gecko/20100101 Firefox/23.0'}
     request = Request( api_url, headers=firefox_headers )
     html = urlopen( request )
     data = html.read().decode( 'utf-8' )
     dataJson = json.loads( data )
-    price = dataJson['data'][0]['price']
-    return price
+    rateList = dataJson['data']
+    for ro in rateList:
+        if ro['name'] == "usd_cny":
+            usdt_price = ro['rate']
 
 def priceThread(threadname, coinID, tradeType):
-    global usdt_price
     while(1):
-        usdt_price = getPrice(coinID, tradeType)
-        time.sleep(60)
+        try:
+            getPrice(coinID, tradeType)
+            time.sleep(60)
+        except:
+            print("request error")
 
 argList = ['ht', 'eos', 'btc', 'eth']
 ws = None
@@ -46,12 +51,14 @@ def on_error(ws, error):
 
 def on_close(ws):
     print("### closed ###")
+    connWebSocket()
 
 def on_open(ws):
     subMarketKline()
 
 def handleMessage(message, coinlist, textlist):
     global ws
+    global usdt_price
     try:
         result=gzip.decompress(message).decode('utf-8')
         if result[:7] == '{"ping"':
