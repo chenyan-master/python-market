@@ -24,7 +24,7 @@ def getPrice(coinID, tradeType):
     dataJson = json.loads( data )
     rateList = dataJson['data']
     for ro in rateList:
-        if ro['name'] == "usd_cny":
+        if ro['name'] == "usdt_cny":
             usdt_price = ro['rate']
 
 def priceThread(threadname, coinID, tradeType):
